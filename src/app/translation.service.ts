@@ -110,10 +110,18 @@ Follow these instructions precisely:
   }
 
   parseApiResponse(jsonString: string): TranslationData[] {
+    console.log('Raw API response:', jsonString.substring(0, 100) + '...');
+    
     let dataToParse = jsonString
       .replace(/^```json\s*/, '')
       .replace(/```$/, '')
       .trim();
+
+    // Handle the specific case of backslash at the beginning
+    if (dataToParse.startsWith('\\')) {
+      console.log('Detected leading backslash, removing...');
+      dataToParse = dataToParse.substring(1);
+    }
 
     if (dataToParse.startsWith('"') && dataToParse.endsWith('"')) {
       try {
@@ -128,41 +136,106 @@ Follow these instructions precisely:
     }
 
     if (typeof dataToParse === 'string') {
-      // Enhanced JSON repair logic
-      let fixedJsonString = dataToParse
-        .replace(/_x000d_/g, '') // Remove carriage returns
-        .replace(/:\s*([०-९\.]+)\s*([,}])/g, ': "$1"$2') // Quote Devanagari numbers
-        .replace(/\n/g, '\\n') // Escape newlines
-        .replace(/\r/g, '\\r') // Escape carriage returns
-        .replace(/\t/g, '\\t'); // Escape tabs
+      // Try multiple parsing strategies
+      const strategies = [
+        () => this.parseWithStrategy1(dataToParse),
+        () => this.parseWithStrategy2(dataToParse),
+        () => this.parseWithStrategy3(dataToParse),
+        () => this.parseWithStrategy4(dataToParse),
+        () => this.parseWithStrategy5(dataToParse)
+      ];
 
-      // Fix common issues before advanced repair
-      fixedJsonString = this.preprocessJsonString(fixedJsonString);
-
-      // Fix unterminated strings by finding and closing them
-      fixedJsonString = this.fixUnterminatedStrings(fixedJsonString);
-
-      try {
-        return JSON.parse(fixedJsonString) as TranslationData[];
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.warn(`Initial JSON parse failed: "${errorMessage}". Retrying with advanced repairs.`);
-        
+      for (let i = 0; i < strategies.length; i++) {
         try {
-          // Advanced repair: fix common JSON issues
-          const repairedJson = this.advancedJsonRepair(fixedJsonString);
-          return JSON.parse(repairedJson) as TranslationData[];
-        } catch (finalError) {
-          console.error("All JSON parsing attempts failed.", {
-            original: jsonString,
-            error: finalError,
-          });
-          throw new Error(`JSON parsing failed: ${finalError instanceof Error ? finalError.message : 'Unknown error'}. Please try again with a smaller chunk size.`);
+          console.log(`Trying parsing strategy ${i + 1}...`);
+          const result = strategies[i]();
+          console.log(`Strategy ${i + 1} succeeded!`);
+          return result;
+        } catch (error) {
+          console.warn(`Strategy ${i + 1} failed:`, error instanceof Error ? error.message : 'Unknown error');
+          if (i === strategies.length - 1) {
+            console.error("All parsing strategies failed.", {
+              original: jsonString,
+              error: error,
+            });
+            throw new Error(`JSON parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again with a smaller chunk size.`);
+          }
         }
       }
     }
     
     throw new Error("Could not parse API response into a valid object or array.");
+  }
+
+  private parseWithStrategy1(jsonString: string): TranslationData[] {
+    // Strategy 1: Basic cleanup and parse
+    let cleaned = jsonString
+      .replace(/_x000d_/g, '')
+      .replace(/:\s*([०-९\.]+)\s*([,}])/g, ': "$1"$2')
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r')
+      .replace(/\t/g, '\\t')
+      .trim();
+    
+    return JSON.parse(cleaned) as TranslationData[];
+  }
+
+  private parseWithStrategy2(jsonString: string): TranslationData[] {
+    // Strategy 2: Remove all backslashes and fix
+    let cleaned = jsonString
+      .replace(/\\/g, '') // Remove all backslashes
+      .replace(/_x000d_/g, '')
+      .replace(/:\s*([०-९\.]+)\s*([,}])/g, ': "$1"$2')
+      .trim();
+    
+    return JSON.parse(cleaned) as TranslationData[];
+  }
+
+  private parseWithStrategy3(jsonString: string): TranslationData[] {
+    // Strategy 3: Find JSON start and extract
+    const jsonStart = jsonString.search(/[\[\{]/);
+    if (jsonStart > 0) {
+      jsonString = jsonString.substring(jsonStart);
+    }
+    
+    let cleaned = jsonString
+      .replace(/\\/g, '')
+      .replace(/_x000d_/g, '')
+      .replace(/:\s*([०-९\.]+)\s*([,}])/g, ': "$1"$2')
+      .trim();
+    
+    return JSON.parse(cleaned) as TranslationData[];
+  }
+
+  private parseWithStrategy4(jsonString: string): TranslationData[] {
+    // Strategy 4: Most aggressive repair
+    let cleaned = this.preprocessJsonString(jsonString);
+    cleaned = this.fixUnterminatedStrings(cleaned);
+    cleaned = this.advancedJsonRepair(cleaned);
+    
+    return JSON.parse(cleaned) as TranslationData[];
+  }
+
+  private parseWithStrategy5(jsonString: string): TranslationData[] {
+    // Strategy 5: Extract array content manually
+    const arrayStart = jsonString.indexOf('[');
+    const arrayEnd = jsonString.lastIndexOf(']');
+    
+    if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
+      const arrayContent = jsonString.substring(arrayStart, arrayEnd + 1);
+      console.log('Extracted array content:', arrayContent.substring(0, 100) + '...');
+      
+      // Clean the extracted content
+      let cleaned = arrayContent
+        .replace(/\\/g, '') // Remove all backslashes
+        .replace(/_x000d_/g, '')
+        .replace(/:\s*([०-९\.]+)\s*([,}])/g, ': "$1"$2')
+        .trim();
+      
+      return JSON.parse(cleaned) as TranslationData[];
+    }
+    
+    throw new Error('Could not find valid array structure');
   }
 
   private preprocessJsonString(jsonString: string): string {
@@ -352,7 +425,7 @@ Follow these instructions precisely:
 
     // Step 2: Translate Data in Chunks
     let translatedRowValues: TranslationData[] = [];
-    const CHUNK_SIZE = 3; // Further reduced chunk size to prevent JSON parsing issues
+    const CHUNK_SIZE = 1; // Minimal chunk size to prevent JSON parsing issues
     const totalChunks = Math.ceil(dataToTranslate.length / CHUNK_SIZE);
 
     for (let i = 0; i < totalChunks; i++) {
