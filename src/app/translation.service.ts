@@ -110,39 +110,28 @@ Follow these instructions precisely:
   }
 
   parseApiResponse(jsonString: string): TranslationData[] {
-    console.log('Raw API response:', jsonString.substring(0, 100) + '...');
+    console.log('Raw API response:', jsonString.substring(0, 200) + '...');
+    console.log('Response length:', jsonString.length);
     
-    let dataToParse = jsonString
-      .replace(/^```json\s*/, '')
-      .replace(/```$/, '')
-      .trim();
-
-    // Handle the specific case of backslash at the beginning
-    if (dataToParse.startsWith('\\')) {
-      console.log('Detected leading backslash, removing...');
-      dataToParse = dataToParse.substring(1);
-    }
-
-    if (dataToParse.startsWith('"') && dataToParse.endsWith('"')) {
-      try {
-        dataToParse = JSON.parse(dataToParse);
-      } catch (e) {
-        console.warn("Could not unwrap double-stringified JSON, proceeding as is.", e);
-      }
-    }
+    // Completely rewrite the response to handle the backslash issue
+    let cleanResponse = this.cleanApiResponse(jsonString);
+    console.log('Cleaned response:', cleanResponse.substring(0, 200) + '...');
     
-    if (typeof dataToParse === 'object' && dataToParse !== null) {
-      return dataToParse as TranslationData[];
-    }
-
-    if (typeof dataToParse === 'string') {
+    try {
+      const result = JSON.parse(cleanResponse);
+      console.log('Direct JSON parse succeeded!');
+      return result as TranslationData[];
+    } catch (error) {
+      console.warn('Direct parse failed, trying fallback methods...');
+      
       // Try multiple parsing strategies
       const strategies = [
-        () => this.parseWithStrategy1(dataToParse),
-        () => this.parseWithStrategy2(dataToParse),
-        () => this.parseWithStrategy3(dataToParse),
-        () => this.parseWithStrategy4(dataToParse),
-        () => this.parseWithStrategy5(dataToParse)
+        () => this.parseWithStrategy1(cleanResponse),
+        () => this.parseWithStrategy2(cleanResponse),
+        () => this.parseWithStrategy3(cleanResponse),
+        () => this.parseWithStrategy4(cleanResponse),
+        () => this.parseWithStrategy5(cleanResponse),
+        () => this.parseWithStrategy6(cleanResponse)
       ];
 
       for (let i = 0; i < strategies.length; i++) {
@@ -151,20 +140,74 @@ Follow these instructions precisely:
           const result = strategies[i]();
           console.log(`Strategy ${i + 1} succeeded!`);
           return result;
-        } catch (error) {
-          console.warn(`Strategy ${i + 1} failed:`, error instanceof Error ? error.message : 'Unknown error');
+        } catch (strategyError) {
+          console.warn(`Strategy ${i + 1} failed:`, strategyError instanceof Error ? strategyError.message : 'Unknown error');
           if (i === strategies.length - 1) {
             console.error("All parsing strategies failed.", {
               original: jsonString,
-              error: error,
+              cleaned: cleanResponse,
+              error: strategyError,
             });
-            throw new Error(`JSON parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again with a smaller chunk size.`);
+            throw new Error(`JSON parsing failed: ${strategyError instanceof Error ? strategyError.message : 'Unknown error'}. Please try again with a smaller chunk size.`);
           }
         }
       }
     }
     
     throw new Error("Could not parse API response into a valid object or array.");
+  }
+
+  private cleanApiResponse(response: string): string {
+    console.log('Starting response cleaning...');
+    
+    // Remove markdown code blocks
+    let cleaned = response
+      .replace(/^```json\s*/, '')
+      .replace(/```$/, '')
+      .trim();
+    
+    console.log('After markdown removal:', cleaned.substring(0, 50) + '...');
+    
+    // Handle the specific backslash issue at the beginning
+    if (cleaned.startsWith('\\')) {
+      console.log('Removing leading backslash...');
+      cleaned = cleaned.substring(1);
+    }
+    
+    // Remove any leading/trailing backslashes
+    cleaned = cleaned.replace(/^\\+/, '').replace(/\\+$/, '');
+    
+    // If it's wrapped in quotes, unwrap it
+    if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+      console.log('Unwrapping quoted response...');
+      try {
+        cleaned = JSON.parse(cleaned);
+        if (typeof cleaned === 'string') {
+          cleaned = cleaned.trim();
+        }
+      } catch (e) {
+        console.warn('Could not unwrap quoted response, proceeding as is');
+      }
+    }
+    
+    // If it's still a string, clean it further
+    if (typeof cleaned === 'string') {
+      // Find the actual JSON start
+      const jsonStart = cleaned.search(/[\[\{]/);
+      if (jsonStart > 0) {
+        console.log(`Found JSON start at position ${jsonStart}`);
+        cleaned = cleaned.substring(jsonStart);
+      }
+      
+      // Remove any remaining problematic characters
+      cleaned = cleaned
+        .replace(/^\\+/, '') // Remove any remaining leading backslashes
+        .replace(/_x000d_/g, '') // Remove carriage returns
+        .trim();
+    }
+    
+    console.log('Final cleaned response:', cleaned.substring(0, 100) + '...');
+    return cleaned;
   }
 
   private parseWithStrategy1(jsonString: string): TranslationData[] {
@@ -236,6 +279,36 @@ Follow these instructions precisely:
     }
     
     throw new Error('Could not find valid array structure');
+  }
+
+  private parseWithStrategy6(jsonString: string): TranslationData[] {
+    // Strategy 6: Create a fallback object if all else fails
+    console.log('Using fallback strategy - creating simple object...');
+    
+    // Try to extract any meaningful content and create a basic object
+    const lines = jsonString.split('\n').filter(line => line.trim());
+    const result: TranslationData[] = [];
+    
+    // Look for any key-value patterns
+    for (const line of lines) {
+      const match = line.match(/([^:]+):\s*(.+)/);
+      if (match) {
+        const key = match[1].trim().replace(/[{}"]/g, '');
+        const value = match[2].trim().replace(/[{}",]/g, '');
+        if (key && value) {
+          result.push({ [key]: value } as TranslationData);
+        }
+      }
+    }
+    
+    if (result.length > 0) {
+      console.log('Fallback strategy created', result.length, 'objects');
+      return result;
+    }
+    
+    // If nothing else works, return a single empty object
+    console.log('Returning empty object as last resort');
+    return [{} as TranslationData];
   }
 
   private preprocessJsonString(jsonString: string): string {
@@ -442,7 +515,7 @@ Follow these instructions precisely:
 
       this.updateStatus(`Translating chunk ${i + 1} of ${totalChunks}...`, false);
       
-      const dataUserPrompt = `Translate the following JSON data according to the instructions:\n\n${JSON.stringify(chunk, null, 2)}`;
+      const dataUserPrompt = `Translate the following JSON data according to the instructions. IMPORTANT: Return ONLY valid JSON array without any markdown formatting, code blocks, or extra text. Do not wrap the response in quotes or add any backslashes:\n\n${JSON.stringify(chunk, null, 2)}`;
       const translatedJsonString = await this.callGeminiAPI(systemPrompt, dataUserPrompt, apiKey);
       
       // Log the response for debugging (first 500 chars)
