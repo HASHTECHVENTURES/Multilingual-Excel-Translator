@@ -127,7 +127,8 @@ Follow these instructions precisely:
       try {
         return JSON.parse(fixedJsonString) as TranslationData[];
       } catch (error) {
-        console.warn(`Initial JSON parse failed: "${error.message}". Retrying with repairs.`);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.warn(`Initial JSON parse failed: "${errorMessage}". Retrying with repairs.`);
         try {
           const repairedJson = fixedJsonString.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
           return JSON.parse(repairedJson) as TranslationData[];
