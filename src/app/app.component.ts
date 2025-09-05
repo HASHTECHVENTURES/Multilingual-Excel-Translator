@@ -20,6 +20,12 @@ export class AppComponent implements OnInit, OnDestroy {
   selectedLanguage: string = 'Hindi';
   customPrompt: string = '';
   
+  // API Key Management
+  savedApiKeys: string[] = [];
+  selectedApiKeyIndex: number = -1;
+  newApiKey: string = '';
+  showApiKeyManager: boolean = false;
+  
   // State management
   isLoading: boolean = false;
   showResults: boolean = false;
@@ -55,6 +61,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.updatePromptForLanguage();
+    this.loadSavedApiKeys();
     this.statusSubscription = this.translationService.status$.subscribe((status: StatusMessage) => {
       this.statusMessage = status.message;
       this.isError = status.isError;
@@ -246,5 +253,72 @@ export class AppComponent implements OnInit, OnDestroy {
 
   get isTranslationInProgress(): boolean {
     return this.translationProgress.isProcessing;
+  }
+
+  // API Key Management Methods
+  loadSavedApiKeys(): void {
+    const saved = localStorage.getItem('savedApiKeys');
+    if (saved) {
+      this.savedApiKeys = JSON.parse(saved);
+      // Add the default API key if it's not already saved
+      const defaultKey = 'AIzaSyA-deNpVWylrXvs8JiNZTEvIwkipAbm35c';
+      if (!this.savedApiKeys.includes(defaultKey)) {
+        this.savedApiKeys.unshift(defaultKey);
+        this.saveApiKeys();
+      }
+    } else {
+      // Initialize with the default API key
+      this.savedApiKeys = ['AIzaSyA-deNpVWylrXvs8JiNZTEvIwkipAbm35c'];
+      this.saveApiKeys();
+    }
+  }
+
+  saveApiKeys(): void {
+    localStorage.setItem('savedApiKeys', JSON.stringify(this.savedApiKeys));
+  }
+
+  addNewApiKey(): void {
+    if (this.newApiKey.trim() && this.isValidApiKey(this.newApiKey.trim())) {
+      if (!this.savedApiKeys.includes(this.newApiKey.trim())) {
+        this.savedApiKeys.unshift(this.newApiKey.trim());
+        this.saveApiKeys();
+        this.newApiKey = '';
+        this.translationService.updateStatus('API key added successfully!', false);
+      } else {
+        this.translationService.updateStatus('This API key is already saved.', true);
+      }
+    } else {
+      this.translationService.updateStatus('Please enter a valid API key.', true);
+    }
+  }
+
+  selectApiKey(index: number): void {
+    this.selectedApiKeyIndex = index;
+    this.apiKey = this.savedApiKeys[index];
+  }
+
+  removeApiKey(index: number): void {
+    if (this.savedApiKeys.length > 1) {
+      this.savedApiKeys.splice(index, 1);
+      this.saveApiKeys();
+      if (this.selectedApiKeyIndex === index) {
+        this.selectedApiKeyIndex = 0;
+        this.apiKey = this.savedApiKeys[0];
+      } else if (this.selectedApiKeyIndex > index) {
+        this.selectedApiKeyIndex--;
+      }
+      this.translationService.updateStatus('API key removed successfully!', false);
+    } else {
+      this.translationService.updateStatus('Cannot remove the last API key.', true);
+    }
+  }
+
+  toggleApiKeyManager(): void {
+    this.showApiKeyManager = !this.showApiKeyManager;
+  }
+
+  get maskedApiKey(apiKey: string): string {
+    if (apiKey.length <= 8) return apiKey;
+    return apiKey.substring(0, 4) + '••••••••' + apiKey.substring(apiKey.length - 4);
   }
 }
