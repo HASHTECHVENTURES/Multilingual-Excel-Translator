@@ -1,0 +1,56 @@
+body {
+  font-family: 'Inter', sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+.file-drop-area {
+  transition: all 0.3s ease;
+}
+
+.file-drop-area.dragover {
+  background-color: #e0f2fe; /* light blue */
+  border-color: #38bdf8; /* sky blue */
+}
+
+#preview-container table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed; /* Helps with word wrapping */
+}
+
+#preview-container th, #preview-container td {
+  border: 1px solid #e2e8f0;
+  padding: 8px;
+  text-align: left;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+#preview-container th {
+  background-color: #f8fafc;
+}
+
+.view-toggle-btn.active {
+  background-color: #2563eb;
+  color: white;
+}
+
+.view-toggle-btn.inactive {
+  background-color: #e5e7eb;
+  color: #374151;
+}
+
+/* Style for the prompt editor */
+details > summary {
+  cursor: pointer;
+  list-style: none; /* Remove default marker */
+}
+
+details > summary::-webkit-details-marker {
+  display: none; /* Remove default marker for Chrome */
+}
+
+details[open] summary .fa-chevron-down {
+  transform: rotate(180deg);
+}
