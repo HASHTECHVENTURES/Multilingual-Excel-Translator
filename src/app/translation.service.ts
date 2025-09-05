@@ -131,7 +131,8 @@ Follow these instructions precisely:
         () => this.parseWithStrategy3(cleanResponse),
         () => this.parseWithStrategy4(cleanResponse),
         () => this.parseWithStrategy5(cleanResponse),
-        () => this.parseWithStrategy6(cleanResponse)
+        () => this.parseWithStrategy6(cleanResponse),
+        () => this.parseWithStrategy7(cleanResponse)
       ];
 
       for (let i = 0; i < strategies.length; i++) {
@@ -224,11 +225,21 @@ Follow these instructions precisely:
   }
 
   private parseWithStrategy2(jsonString: string): TranslationData[] {
-    // Strategy 2: Remove all backslashes and fix
+    // Strategy 2: Fix missing commas and remove backslashes
     let cleaned = jsonString
       .replace(/\\/g, '') // Remove all backslashes
       .replace(/_x000d_/g, '')
       .replace(/:\s*([०-९\.]+)\s*([,}])/g, ': "$1"$2')
+      // Fix missing commas after property values
+      .replace(/"\s*\n\s*"/g, '",\n"') // Add comma between quoted strings
+      .replace(/"\s*\n\s*}/g, '"\n}') // Remove comma before closing brace
+      .replace(/"\s*\n\s*]/g, '"\n]') // Remove comma before closing bracket
+      // Fix missing commas after property values (not in quotes)
+      .replace(/([^,}])\s*\n\s*"/g, '$1,\n"') // Add comma before quoted property
+      .replace(/([^,}])\s*\n\s*}/g, '$1\n}') // Don't add comma before closing brace
+      .replace(/([^,}])\s*\n\s*]/g, '$1\n]') // Don't add comma before closing bracket
+      // Fix trailing commas
+      .replace(/,(\s*[}\]])/g, '$1')
       .trim();
     
     return JSON.parse(cleaned) as TranslationData[];
@@ -282,7 +293,31 @@ Follow these instructions precisely:
   }
 
   private parseWithStrategy6(jsonString: string): TranslationData[] {
-    // Strategy 6: Create a fallback object if all else fails
+    // Strategy 6: Fix missing commas and brackets
+    console.log('Using strategy 6 - fixing JSON structure...');
+    
+    let fixed = jsonString
+      // Fix missing commas after property values
+      .replace(/"\s*\n\s*"/g, '",\n"') // Add comma between quoted strings
+      .replace(/"\s*\n\s*}/g, '"\n}') // Remove comma before closing brace
+      .replace(/"\s*\n\s*]/g, '"\n]') // Remove comma before closing bracket
+      // Fix missing commas after property values (not in quotes)
+      .replace(/([^,}])\s*\n\s*"/g, '$1,\n"') // Add comma before quoted property
+      .replace(/([^,}])\s*\n\s*}/g, '$1\n}') // Don't add comma before closing brace
+      .replace(/([^,}])\s*\n\s*]/g, '$1\n]') // Don't add comma before closing bracket
+      // Fix trailing commas
+      .replace(/,(\s*[}\]])/g, '$1')
+      // Fix missing quotes around property names
+      .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
+      // Fix missing quotes around string values
+      .replace(/:\s*([^",{\[\]\s][^",{\[\]}]*?)(\s*[,}\]])/g, ': "$1"$2');
+    
+    console.log('Fixed JSON structure:', fixed.substring(0, 200) + '...');
+    return JSON.parse(fixed) as TranslationData[];
+  }
+
+  private parseWithStrategy7(jsonString: string): TranslationData[] {
+    // Strategy 7: Create a fallback object if all else fails
     console.log('Using fallback strategy - creating simple object...');
     
     // Try to extract any meaningful content and create a basic object
