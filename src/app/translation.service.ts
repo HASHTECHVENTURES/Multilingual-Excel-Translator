@@ -121,28 +121,90 @@ Follow these instructions precisely:
     }
 
     if (typeof dataToParse === 'string') {
-      const fixedJsonString = dataToParse
-        .replace(/_x000d_/g, '')
-        .replace(/:\s*([०-९\.]+)\s*([,}])/g, ': "$1"$2');
+      // Enhanced JSON repair logic
+      let fixedJsonString = dataToParse
+        .replace(/_x000d_/g, '') // Remove carriage returns
+        .replace(/:\s*([०-९\.]+)\s*([,}])/g, ': "$1"$2') // Quote Devanagari numbers
+        .replace(/\n/g, '\\n') // Escape newlines
+        .replace(/\r/g, '\\r') // Escape carriage returns
+        .replace(/\t/g, '\\t'); // Escape tabs
+
+      // Fix unterminated strings by finding and closing them
+      fixedJsonString = this.fixUnterminatedStrings(fixedJsonString);
+
       try {
         return JSON.parse(fixedJsonString) as TranslationData[];
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.warn(`Initial JSON parse failed: "${errorMessage}". Retrying with repairs.`);
+        console.warn(`Initial JSON parse failed: "${errorMessage}". Retrying with advanced repairs.`);
+        
         try {
-          const repairedJson = fixedJsonString.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+          // Advanced repair: fix common JSON issues
+          const repairedJson = this.advancedJsonRepair(fixedJsonString);
           return JSON.parse(repairedJson) as TranslationData[];
         } catch (finalError) {
           console.error("All JSON parsing attempts failed.", {
             original: jsonString,
             error: finalError,
           });
-          throw finalError;
+          throw new Error(`JSON parsing failed: ${finalError instanceof Error ? finalError.message : 'Unknown error'}. Please try again with a smaller chunk size.`);
         }
       }
     }
     
     throw new Error("Could not parse API response into a valid object or array.");
+  }
+
+  private fixUnterminatedStrings(jsonString: string): string {
+    // Find unterminated strings and close them
+    let result = jsonString;
+    let inString = false;
+    let escapeNext = false;
+    
+    for (let i = 0; i < result.length; i++) {
+      const char = result[i];
+      
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      
+      if (char === '"') {
+        inString = !inString;
+      } else if (!inString && (char === '}' || char === ']')) {
+        // If we're at the end of an object/array and still in a string, close it
+        if (inString) {
+          result = result.slice(0, i) + '"' + result.slice(i);
+          inString = false;
+        }
+      }
+    }
+    
+    // If we ended while still in a string, close it
+    if (inString) {
+      result += '"';
+    }
+    
+    return result;
+  }
+
+  private advancedJsonRepair(jsonString: string): string {
+    let repaired = jsonString;
+    
+    // Fix common issues
+    repaired = repaired
+      .replace(/\\(?!["\\/bfnrtu])/g, '\\\\') // Fix invalid escape sequences
+      .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
+      .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":') // Quote unquoted keys
+      .replace(/:\s*([^",{\[\]\s][^",{\[\]}]*?)(\s*[,}\]])/g, ': "$1"$2') // Quote unquoted string values
+      .replace(/:\s*([^",{\[\]\s][^",{\[\]}]*?)(\s*[,}\]])/g, ': "$1"$2'); // Second pass for nested quotes
+    
+    return repaired;
   }
 
   async callGeminiAPI(systemPrompt: string, userPrompt: string, apiKey: string): Promise<string> {
@@ -227,7 +289,7 @@ Follow these instructions precisely:
 
     // Step 2: Translate Data in Chunks
     let translatedRowValues: TranslationData[] = [];
-    const CHUNK_SIZE = 10;
+    const CHUNK_SIZE = 5; // Reduced chunk size to prevent JSON parsing issues
     const totalChunks = Math.ceil(dataToTranslate.length / CHUNK_SIZE);
 
     for (let i = 0; i < totalChunks; i++) {
@@ -238,6 +300,10 @@ Follow these instructions precisely:
       
       const dataUserPrompt = `Translate the following JSON data according to the instructions:\n\n${JSON.stringify(chunk, null, 2)}`;
       const translatedJsonString = await this.callGeminiAPI(systemPrompt, dataUserPrompt, apiKey);
+      
+      // Log the response for debugging (first 500 chars)
+      console.log(`API Response (chunk ${i + 1}):`, translatedJsonString.substring(0, 500) + '...');
+      
       const parsedChunk = this.parseApiResponse(translatedJsonString);
       translatedRowValues.push(...parsedChunk);
     }
