@@ -104,6 +104,25 @@
         {{ isLoading ? 'Translating...' : 'Translate' }}
       </button>
     </div>
+
+    <!-- Progress Bar -->
+    <div *ngIf="isTranslationInProgress" class="mb-6">
+      <div class="bg-white rounded-lg p-4 shadow-sm border">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-medium text-gray-700">{{ translationProgress.currentStep }}</span>
+          <span class="text-sm text-gray-500">{{ progressPercentage }}%</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2.5">
+          <div 
+            class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+            [style.width.%]="progressPercentage">
+          </div>
+        </div>
+        <div class="mt-2 text-xs text-gray-500 text-center">
+          Chunk {{ translationProgress.currentChunk }} of {{ translationProgress.totalChunks }}
+        </div>
+      </div>
+    </div>
     
     <!-- Status & Messages -->
     <div *ngIf="statusMessage" [class]="statusClasses" role="alert">
@@ -142,7 +161,21 @@
         </button>
       </div>
       <div id="preview-container" class="max-h-96 overflow-auto border border-gray-200 rounded-lg shadow-inner">
-        <table *ngIf="displayData.length > 0" class="w-full border-collapse">
+        <!-- Skeleton Loading -->
+        <div *ngIf="isTranslationInProgress && !displayData.length" class="p-4">
+          <div class="animate-pulse">
+            <div class="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
+            <div class="space-y-3">
+              <div class="h-3 bg-gray-200 rounded w-full"></div>
+              <div class="h-3 bg-gray-200 rounded w-5/6"></div>
+              <div class="h-3 bg-gray-200 rounded w-4/6"></div>
+              <div class="h-3 bg-gray-200 rounded w-3/4"></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Data Table -->
+        <table *ngIf="displayData.length > 0 && !isTranslationInProgress" class="w-full border-collapse">
           <thead>
             <tr>
               <th *ngFor="let header of displayHeaders" class="border border-gray-300 px-2 py-1 bg-gray-50 text-left">
@@ -158,7 +191,9 @@
             </tr>
           </tbody>
         </table>
-        <p *ngIf="displayData.length === 0" class="p-4 text-center text-gray-500">
+        
+        <!-- Empty State -->
+        <p *ngIf="displayData.length === 0 && !isTranslationInProgress" class="p-4 text-center text-gray-500">
           No data to display.
         </p>
       </div>

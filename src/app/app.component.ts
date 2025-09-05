@@ -25,6 +25,19 @@ export class AppComponent implements OnInit, OnDestroy {
   showResults: boolean = false;
   showTranslatedView: boolean = true;
   
+  // Lazy loading states
+  translationProgress: {
+    currentChunk: number;
+    totalChunks: number;
+    currentStep: string;
+    isProcessing: boolean;
+  } = {
+    currentChunk: 0,
+    totalChunks: 0,
+    currentStep: '',
+    isProcessing: false
+  };
+  
   // Data
   originalData: TranslationData[] = [];
   translatedData: TranslationData[] = [];
@@ -136,14 +149,23 @@ export class AppComponent implements OnInit, OnDestroy {
 
     this.isLoading = true;
     this.showResults = false;
+    this.translationProgress = {
+      currentChunk: 0,
+      totalChunks: 0,
+      currentStep: 'Initializing translation...',
+      isProcessing: true
+    };
     
     try {
-      this.translatedData = await this.translationService.translateData(
+      this.translatedData = await this.translationService.translateDataWithProgress(
         this.originalData,
         this.originalHeaders,
         this.customPrompt,
         this.selectedLanguage,
-        this.apiKey
+        this.apiKey,
+        (progress) => {
+          this.translationProgress = progress;
+        }
       );
       
       this.showResults = true;
@@ -158,6 +180,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.translatedData = [];
     } finally {
       this.isLoading = false;
+      this.translationProgress.isProcessing = false;
     }
   }
 
@@ -214,5 +237,14 @@ export class AppComponent implements OnInit, OnDestroy {
   private isValidApiKey(apiKey: string): boolean {
     // Basic validation for Gemini API key format
     return apiKey.length > 20 && /^[A-Za-z0-9_-]+$/.test(apiKey);
+  }
+
+  get progressPercentage(): number {
+    if (this.translationProgress.totalChunks === 0) return 0;
+    return Math.round((this.translationProgress.currentChunk / this.translationProgress.totalChunks) * 100);
+  }
+
+  get isTranslationInProgress(): boolean {
+    return this.translationProgress.isProcessing;
   }
 }

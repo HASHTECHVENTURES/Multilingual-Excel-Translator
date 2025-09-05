@@ -32,6 +32,13 @@ export interface GeminiApiError {
   };
 }
 
+export interface TranslationProgress {
+  currentChunk: number;
+  totalChunks: number;
+  currentStep: string;
+  isProcessing: boolean;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -265,12 +272,13 @@ Follow these instructions precisely:
     throw new Error('API request failed after multiple retries.');
   }
 
-  async translateData(
+  async translateDataWithProgress(
     originalData: TranslationData[],
     originalHeaders: string[],
     systemPrompt: string,
     language: string,
-    apiKey: string
+    apiKey: string,
+    progressCallback: (progress: TranslationProgress) => void
   ): Promise<TranslationData[]> {
     // Filter data: separate rows to translate from rows to keep in English
     const dataToTranslate = originalData.filter(row => 
@@ -280,6 +288,13 @@ Follow these instructions precisely:
     const headersUserPrompt = `Translate the following comma-separated list of column headers into ${language}. Return ONLY the translated comma-separated list, without any extra text or explanations.\n\n${originalHeaders.join(', ')}`;
     
     // Step 1: Translate Headers
+    progressCallback({
+      currentChunk: 0,
+      totalChunks: Math.ceil(dataToTranslate.length / 5) + 1,
+      currentStep: 'Translating column headers...',
+      isProcessing: true
+    });
+    
     const translatedHeadersText = await this.callGeminiAPI(`You are a concise translator.`, headersUserPrompt, apiKey);
     const translatedHeaders = translatedHeadersText.split(',').map(h => h.trim());
 
@@ -296,6 +311,14 @@ Follow these instructions precisely:
       const chunk = dataToTranslate.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
       if (chunk.length === 0) continue;
 
+      // Update progress
+      progressCallback({
+        currentChunk: i + 1,
+        totalChunks: totalChunks + 1, // +1 for headers
+        currentStep: `Translating data chunk ${i + 1} of ${totalChunks}...`,
+        isProcessing: true
+      });
+
       this.updateStatus(`Translating chunk ${i + 1} of ${totalChunks}...`, false);
       
       const dataUserPrompt = `Translate the following JSON data according to the instructions:\n\n${JSON.stringify(chunk, null, 2)}`;
@@ -309,6 +332,13 @@ Follow these instructions precisely:
     }
 
     // Step 3: Reconstruct the full data set
+    progressCallback({
+      currentChunk: totalChunks + 1,
+      totalChunks: totalChunks + 1,
+      currentStep: 'Finalizing translation...',
+      isProcessing: true
+    });
+
     let translatedDataCounter = 0;
     const translatedData = originalData.map(originalRow => {
       const newRow: TranslationData = {};
