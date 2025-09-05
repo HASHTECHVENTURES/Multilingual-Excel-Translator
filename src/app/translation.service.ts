@@ -136,6 +136,9 @@ Follow these instructions precisely:
         .replace(/\r/g, '\\r') // Escape carriage returns
         .replace(/\t/g, '\\t'); // Escape tabs
 
+      // Fix common issues before advanced repair
+      fixedJsonString = this.preprocessJsonString(fixedJsonString);
+
       // Fix unterminated strings by finding and closing them
       fixedJsonString = this.fixUnterminatedStrings(fixedJsonString);
 
@@ -160,6 +163,38 @@ Follow these instructions precisely:
     }
     
     throw new Error("Could not parse API response into a valid object or array.");
+  }
+
+  private preprocessJsonString(jsonString: string): string {
+    // Handle common issues that cause JSON parsing failures
+    let processed = jsonString;
+    
+    // Fix backslashes at the beginning of JSON (common issue)
+    if (processed.startsWith('\\')) {
+      processed = processed.substring(1);
+    }
+    
+    // Fix multiple backslashes at the beginning
+    while (processed.startsWith('\\\\')) {
+      processed = processed.substring(2);
+    }
+    
+    // Ensure the string starts with [ or {
+    if (!processed.trim().startsWith('[') && !processed.trim().startsWith('{')) {
+      // Try to find the actual start of JSON
+      const jsonStart = processed.search(/[\[\{]/);
+      if (jsonStart > 0) {
+        processed = processed.substring(jsonStart);
+      }
+    }
+    
+    // Fix any remaining escape issues
+    processed = processed
+      .replace(/^\\+/, '') // Remove leading backslashes
+      .replace(/\\+$/, '') // Remove trailing backslashes
+      .trim();
+    
+    return processed;
   }
 
   private fixUnterminatedStrings(jsonString: string): string {
@@ -203,13 +238,26 @@ Follow these instructions precisely:
   private advancedJsonRepair(jsonString: string): string {
     let repaired = jsonString;
     
-    // Fix common issues
+    // Fix common issues with more aggressive repair
     repaired = repaired
+      // Fix backslash issues - replace problematic backslashes
       .replace(/\\(?!["\\/bfnrtu])/g, '\\\\') // Fix invalid escape sequences
-      .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
-      .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":') // Quote unquoted keys
-      .replace(/:\s*([^",{\[\]\s][^",{\[\]}]*?)(\s*[,}\]])/g, ': "$1"$2') // Quote unquoted string values
-      .replace(/:\s*([^",{\[\]\s][^",{\[\]}]*?)(\s*[,}\]])/g, ': "$1"$2'); // Second pass for nested quotes
+      .replace(/\\/g, '\\\\') // Double all backslashes to be safe
+      .replace(/\\\\"/g, '\\"') // Fix double-escaped quotes
+      .replace(/\\\\n/g, '\\n') // Fix double-escaped newlines
+      .replace(/\\\\t/g, '\\t') // Fix double-escaped tabs
+      .replace(/\\\\r/g, '\\r') // Fix double-escaped carriage returns
+      // Remove trailing commas
+      .replace(/,(\s*[}\]])/g, '$1')
+      // Quote unquoted keys
+      .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
+      // Quote unquoted string values (multiple passes)
+      .replace(/:\s*([^",{\[\]\s][^",{\[\]}]*?)(\s*[,}\]])/g, ': "$1"$2')
+      .replace(/:\s*([^",{\[\]\s][^",{\[\]}]*?)(\s*[,}\]])/g, ': "$1"$2')
+      // Fix any remaining unescaped quotes in values
+      .replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":')
+      // Clean up any double quotes that might have been created
+      .replace(/""/g, '"');
     
     return repaired;
   }
@@ -304,7 +352,7 @@ Follow these instructions precisely:
 
     // Step 2: Translate Data in Chunks
     let translatedRowValues: TranslationData[] = [];
-    const CHUNK_SIZE = 5; // Reduced chunk size to prevent JSON parsing issues
+    const CHUNK_SIZE = 3; // Further reduced chunk size to prevent JSON parsing issues
     const totalChunks = Math.ceil(dataToTranslate.length / CHUNK_SIZE);
 
     for (let i = 0; i < totalChunks; i++) {
@@ -326,6 +374,8 @@ Follow these instructions precisely:
       
       // Log the response for debugging (first 500 chars)
       console.log(`API Response (chunk ${i + 1}):`, translatedJsonString.substring(0, 500) + '...');
+      console.log(`API Response length:`, translatedJsonString.length);
+      console.log(`API Response starts with:`, translatedJsonString.substring(0, 10));
       
       const parsedChunk = this.parseApiResponse(translatedJsonString);
       translatedRowValues.push(...parsedChunk);
